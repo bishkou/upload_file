@@ -2,40 +2,48 @@ import {
   Controller,
   Post,
   Req,
-  UsePipes,
   Res,
-  UseGuards,
-  Get,
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { FileUploadService } from './file_upload.service';
+import { fileValidation } from './file.validation';
 import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('fileupload')
 export class FileUploadController {
+  private MAX_SIZE: number = +process.env.MAX_SIZE;
   constructor(private readonly fileUploadService: FileUploadService) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('upload'))
+  @UseInterceptors(
+    FileInterceptor('upload', {
+      fileFilter: fileValidation,
+    }),
+  )
   async create(
-    @Req() request,
-    @Res() response,
+    @Req() request: Request,
+    @Res() response: Response,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    try {
-      const f = await this.fileUploadService
-        .fileupload(request, response, file)
-        .catch((error) => {
-          return response
-            .status(500)
-            .json(`Failed to upload image file: ${error.message}`);
-        });
-      return response.status(200).json(f);
-    } catch (error) {
+    if (request.body.fileValidationError || request.file.size > this.MAX_SIZE) {
       return response
         .status(500)
-        .json(`Failed to upload image file: ${error.message}`);
+        .json(
+          `Failed to upload file: ${
+            request.body.fileValidationError || 'file is too big'
+          }`,
+        );
     }
+
+    await this.fileUploadService
+      .fileupload(request, response, file)
+      .catch((error) => {
+        return response
+          .status(500)
+          .json(`Failed to upload image file: ${error.message}`);
+      });
+    return response.status(200).json('File uploaded successfully');
   }
 }
